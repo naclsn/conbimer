@@ -1,0 +1,66 @@
+body {
+    margin: 0;
+    padding: 0;
+    --overflow: hidden;
+    touch-action: none;
+}
+body>div {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    touch-action: none;
+}
+
+:root {
+    --top-bar-height: 22vh;
+    --arena-height: 55vh;
+    --boop-height: 2rem;
+    --item-size: 11vw;
+    --boop-margin: 22%;
+}
+
+#top-bar {
+    height: 15vh;
+}
+#arena {
+    height: 40vh;
+}
+#button_grp {
+    height: 5vh;
+    white-space: nowrap;
+    overflow-x: hidden;
+}
+#boop {
+    width: calc(100vw - 2 * var(--boop-margin));
+    margin-left: var(--boop-margin);
+    margin-right: var(--boop-margin);
+}
+#draw_undo,
+#draw_redo,
+#draw_done {
+    width: 30vw;
+    margin-right: 2vw;
+}
+#known,
+#colors {
+    height: 20vh;
+    margin: 0;
+    padding: 0;
+    --white-space: nowrap;
+    overflow-x: scroll;
+}
+#drawing {
+    --width: 100%;
+}
+
+#arena>.item {
+    position: absolute;
+    touch-action: none;
+}
+
+#colors .color {
+    width: 10vh;
+    height: 10vh;
+    margin: 5vh;
+    background-color: var(--color);
+}

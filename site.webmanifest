@@ -1,0 +1,16 @@
+{
+    "name": "conbimer",
+    "short_name": "conbimer",
+    "description": "conbimer",
+    "start_url": "index.html",
+    "icons": [
+        {
+            "src": "largicon.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ],
+    "theme_color": "#6eb50f",
+    "background_color": "#252d40",
+    "display": "standalone"
+}
