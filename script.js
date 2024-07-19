@@ -3,7 +3,6 @@ window.onload = async function() {
 
     if (!navigator.serviceWorker) return document.body.innerHTML = '<h2>no :c</h2>'
     const re = await navigator.serviceWorker.register('worker.js');
-
     await re.update(); // XXX: ?wip :(
     await navigator.serviceWorker.ready;
 
@@ -60,6 +59,8 @@ window.onload = async function() {
 
     /** @type {Map<HTMLElement, HTMLElement[]>} */
     const itemColorMap = new Map();
+    /** @type {Set<string>} */
+    const availColorSet = new Set();
 
     document.body.onpointerup = (/** @type {PointerEvent} */ ev) => {
         const target = draggingPointers[ev.pointerId];
@@ -70,12 +71,14 @@ window.onload = async function() {
         if (rect.top < ev.y && ev.y < rect.bottom) {
             const cols = target.getAttribute('data-colors').split('-');
             const linked = new Array(cols.length);
-            for (let k = 0; k < cols.length; ++k) {
+            for (let k = 0; k < cols.length; ++k) if (!availColorSet.has(cols[k])) {
+                availColorSet.add(cols[k]);
                 const it = linked[k] = colors
                     .appendChild(document.createElement('li'))
                     .appendChild(document.createElement('div'));
                 it.setAttribute('style', '--color: #'+cols[k]+';');
                 it.setAttribute('class', 'color');
+                it.onclick = takePenPicker;
             }
             itemColorMap.set(target, linked);
             if (1 < arena.childElementCount) boop.removeAttribute('disabled');
@@ -111,10 +114,32 @@ window.onload = async function() {
 
     const resizer = new OffscreenCanvas(RESIZE, RESIZE);
 
+    const penpicker = document.createElement('div');
+    penpicker.setAttribute('id', 'penpicker');
+    for (const size of [innerWidth/18, innerWidth/24, innerWidth/36]) {
+        const pen = penpicker.appendChild(document.createElement('div'));
+        pen.setAttribute('style', '--size: '+size+';');
+        pen.onclick = pickPen;
+    }
+
+    function takePenPicker(/** @type {PointerEvent} */ ev) {
+        /** @type {HTMLElement} */ const col = ev.target;
+        col.appendChild(penpicker);
+    }
+
+    function pickPen(/** @type {PointerEvent} */ ev) {
+        /** @type {HTMLElement} */ const pen = ev.target;
+        const col = penpicker.parentNode;
+        ctx.strokeStyle = col.getAttribute('style').slice('--color: '.length, -1);
+        ctx.lineWidth = pen.getAttribute('style').slice('--size: '.length, -1);
+        col.removeChild(penpicker);
+    }
+
     function goDraw() {
         arena.innerHTML = ''; // XXX: *poof* :(
         draggingPointers.length = 0;
         itemColorMap.clear();
+        availColorSet.clear();
 
         known.setAttribute('class', 'locked');
         colors.removeAttribute('class');
@@ -146,16 +171,22 @@ window.onload = async function() {
             const nameas = known.childElementCount.toString();
             const colset = new Set(drawn.map(one => one[0].slice(1)));
             const collst = []; colset.forEach(v => collst.push(v));
+            const usedcolors = collst.join('-');
             fetch('put?i='+nameas, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'image/png',
-                    'X-Used-Colors': collst.join('-'),
+                    'X-Used-Colors': usedcolors,
                 },
                 body: await resizer.convertToBlob(),
             }).then(_ => {
-                const img = document.body.appendChild(document.createElement('img'));
-                img.src = 'get?i='+nameas;
+                const it = known
+                    .appendChild(document.createElement('li'))
+                    .appendChild(document.createElement('img'));
+                it.setAttribute('class', 'item');
+                it.src = 'get?i='+nameas;
+                it.setAttribute('data-colors', usedcolors);
+                it.onpointerdown = knownItemPointerDown;
             });
         }
     }

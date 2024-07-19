@@ -72,3 +72,8 @@ body>div {
 #colors.locked .color {
     pointer-events: none;
 }
+
+#penpicker>div>div {
+    border: solid var(--size) var(--color);
+    border-radius: 50%;
+}
