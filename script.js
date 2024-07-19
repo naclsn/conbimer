@@ -1,7 +1,11 @@
 window.onload = async function() {
+    const RESIZE = 128;
+
     if (!navigator.serviceWorker) return document.body.innerHTML = '<h2>no :c</h2>'
     const re = await navigator.serviceWorker.register('worker.js');
-    await re.update(); // XXX: wip :(
+
+    await re.update(); // XXX: ?wip :(
+    await navigator.serviceWorker.ready;
 
     /** @type {HTMLElement} */ const wrapper = window.wrapper;
     /** @type {HTMLElement} */ const arena = window.arena;
@@ -18,34 +22,20 @@ window.onload = async function() {
     const ctx = drawing.getContext('2d');
 
     scrollBy(0, -innerHeight);
-    goDone();
+    await goDone();
 
-    /**
-     * @typedef {Object} Item
-     * @property {string} face - name
-     * @property {string} colors - NIY
-     */
+    /** @type {[string, string][]} */
+    const load_known = await fetch('all').then(r => r.json());
 
-    /** @type {Item[]} */
-    const load_known = [
-        {face: 'cyan',    colors: '228888'},
-        {face: 'magenta', colors: '882288'},
-        {face: 'yellow',  colors: '888822'},
-        {face: 'black',   colors: '222222'},
-    ];
-
-    let k = 0;
-    const handle = setInterval(() => {
-        if (load_known.length-1 === k) clearInterval(handle);
-        const data = load_known[k++];
+    for (const data of load_known) {
         const it = known
             .appendChild(document.createElement('li'))
-            .appendChild(document.createElement('div'));
+            .appendChild(document.createElement('img'));
         it.setAttribute('class', 'item');
-        it.textContent = data.face;
-        it.setAttribute('data-colors', data.colors);
+        it.src = 'get?i='+data[0];
+        it.setAttribute('data-colors', data[1]);
         it.onpointerdown = knownItemPointerDown;
-    }, 120);
+    }
 
     boop.onclick = goDraw;
     draw_undo.onclick = drawUndo;
@@ -53,7 +43,7 @@ window.onload = async function() {
     draw_done.onclick = goDone;
 
     /** @type {(?HTMLElement)[]} */
-    const draggingPointers = {};
+    const draggingPointers = [];
 
     function knownItemPointerDown(/** @type {PointerEvent} */ ev) {
         ev.preventDefault();
@@ -62,6 +52,7 @@ window.onload = async function() {
         target.onpointerdown = arenaItemPointerDown;
         moveAbsoluteItem(target, ev.x, ev.y);
     }
+
     function arenaItemPointerDown(/** @type {PointerEvent} */ ev) {
         ev.preventDefault();
         draggingPointers[ev.pointerId] = ev.target;
@@ -77,7 +68,7 @@ window.onload = async function() {
 
         const rect = arena.getBoundingClientRect();
         if (rect.top < ev.y && ev.y < rect.bottom) {
-            const cols = target.getAttribute('data-colors').split(',');
+            const cols = target.getAttribute('data-colors').split('-');
             const linked = new Array(cols.length);
             for (let k = 0; k < cols.length; ++k) {
                 const it = linked[k] = colors
@@ -91,8 +82,7 @@ window.onload = async function() {
         }
 
         else {
-            // WIP: colors
-            for (const it of itemColorMap.get(target)) it.remove();
+            for (const it of itemColorMap.get(target) || []) it.remove();
             itemColorMap.delete(target);
             target.remove();
             if (arena.childElementCount < 2) boop.setAttribute('disabled', 'oui');
@@ -115,46 +105,54 @@ window.onload = async function() {
 
     /** the first index of each are the color (string) and the width
      *  then the positions as a flat list of x,y
-     *  @type {number[][]} */
+     *  @type {[string, number...][]} */
     const drawn = [];
     let last_drawn = 0;
 
+    const resizer = new OffscreenCanvas(RESIZE, RESIZE);
+
     function goDraw() {
         arena.innerHTML = ''; // XXX: *poof* :(
-        //draggingPointers; // TODO: just in case-
+        draggingPointers.length = 0;
         itemColorMap.clear();
 
-        known.setAttribute('style', 'pointer-events: none;');
+        known.setAttribute('class', 'locked');
+        colors.removeAttribute('class');
         wrapper.scrollBy({top: innerWidth, behavior: 'smooth'});
         button_grp.scrollBy({left: innerWidth, behavior: 'smooth'});
 
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, innerWidth, innerWidth);
+        ctx.clearRect(0, 0, innerWidth, innerWidth);
         drawn.length = last_drawn = 0;
         ctx.lineCap = ctx.lineJoin = 'round';
 
-        // XXX: TODO: ici
-        ctx.strokeStyle = 'orange';
-        ctx.lineWidth = 12;
+        ctx.strokeStyle = colors.querySelector('.color').getAttribute('style').slice('--color: '.length, -1);
+        ctx.lineWidth = innerWidth/24;
     }
 
-    function goDone(/** @type {boolean} */ done) {
-        known.removeAttribute('style');
+    async function goDone(/** @type {boolean} */ done) {
+        colors.innerHTML = '';
+        for (const button of button_grp.children) button.setAttribute('disabled', 'oui');
+
+        known.removeAttribute('class');
+        colors.setAttribute('class', 'locked');
         wrapper.scrollBy(0, -innerWidth);
         button_grp.scrollBy(-innerWidth, 0);
 
-        for (const button of button_grp.children) button.setAttribute('disabled', 'oui');
-
         if (done) {
-            const resize = 128;
-            ctx.drawImage(drawing, 0, 0, resize, resize);
-            //console.dir(img);
+            const ctxx = resizer.getContext('2d');
+            ctxx.clearRect(0, 0, RESIZE, RESIZE);
+            ctxx.drawImage(drawing, 0, 0, RESIZE, RESIZE);
             // XXX: need to name it maybe
             const nameas = known.childElementCount.toString();
+            const colset = new Set(drawn.map(one => one[0].slice(1)));
+            const collst = []; colset.forEach(v => collst.push(v));
             fetch('put?i='+nameas, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/octet-stream'},
-                body: ctx.getImageData(0, 0, resize, resize).data.buffer,
+                headers: {
+                    'Content-Type': 'image/png',
+                    'X-Used-Colors': collst.join('-'),
+                },
+                body: await resizer.convertToBlob(),
             }).then(_ => {
                 const img = document.body.appendChild(document.createElement('img'));
                 img.src = 'get?i='+nameas;
@@ -163,12 +161,10 @@ window.onload = async function() {
     }
 
     function drawUndo() {
-        console.log("undo, %d, %d", last_drawn, drawn.length);
         if (!--last_drawn) draw_undo.setAttribute('disabled', 'oui');
         draw_redo.removeAttribute('disabled');
 
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, innerWidth, innerWidth);
+        ctx.clearRect(0, 0, innerWidth, innerWidth);
 
         for (const each of drawn.slice(0, last_drawn)) {
             ctx.strokeStyle = each[0];
@@ -181,7 +177,6 @@ window.onload = async function() {
     }
 
     function drawRedo() {
-        console.log("redo, %d, %d", last_drawn, drawn.length);
         if (drawn.length === ++last_drawn) draw_redo.setAttribute('disabled', 'oui');
         draw_undo.removeAttribute('disabled');
 
@@ -199,7 +194,7 @@ window.onload = async function() {
         ctx.moveTo(ev.offsetX, ev.offsetY);
         draw_redo.setAttribute('disabled', 'oui');
         drawn[last_drawn] = [ctx.strokeStyle, ctx.lineWidth, ev.offsetX, ev.offsetY];
-    }
+    };
 
     drawing.onpointermove = (/** @type {PointerEvent} */ ev) => {
         if (ev.buttons) {
@@ -210,7 +205,7 @@ window.onload = async function() {
             ctx.moveTo(ev.offsetX, ev.offsetY);
             drawn[drawn.length-1].push(ev.offsetX, ev.offsetY);
         }
-    }
+    };
 
     drawing.onpointerup = (/** @type {PointerEvent} */ ev) => {
         drawing.onpointermove(ev);
@@ -218,5 +213,5 @@ window.onload = async function() {
         ++last_drawn;
         draw_undo.removeAttribute('disabled');
         draw_done.removeAttribute('disabled');
-    }
+    };
 };

@@ -1,8 +1,9 @@
 body {
     margin: 0;
     padding: 0;
-    --overflow: hidden;
     touch-action: none;
+    background: #ffffff;
+    color-scheme: light;
 }
 body>div {
     width: 100vw;
@@ -12,10 +13,10 @@ body>div {
 }
 
 :root {
-    --top-bar-height: 22vh;
-    --arena-height: 55vh;
-    --boop-height: 2rem;
-    --item-size: 11vw;
+    /* --top-bar-height: 22vh; */
+    /* --arena-height: 55vh; */
+    /* --boop-height: 2rem; */
+    /* --item-size: 11vw; */
     --boop-margin: 22%;
 }
 
@@ -46,21 +47,28 @@ body>div {
     height: 20vh;
     margin: 0;
     padding: 0;
-    --white-space: nowrap;
     overflow-x: scroll;
-}
-#drawing {
-    --width: 100%;
 }
 
 #arena>.item {
     position: absolute;
     touch-action: none;
+    width: 25vw;
+    height: 25vw;
 }
 
+#known .item,
 #colors .color {
     width: 10vh;
     height: 10vh;
     margin: 5vh;
+}
+
+#colors .color {
     background-color: var(--color);
+}
+
+#known.locked .item,
+#colors.locked .color {
+    pointer-events: none;
 }

@@ -1,49 +1,89 @@
-addEventListener('install', _ => void skipWaiting());
-addEventListener('activate', _ => void clients.claim());
+const CACHENAME_FILES = 'conbimer-files';
+const CACHENAME_ITEMS = 'conbimer-items';
 
-/** @type {?OffscreenCanvas} */
-let offcanvas;
+addEventListener('install', ev => {
+    ev.waitUntil((async () => {
+        await skipWaiting();
+        const files = await caches.open(CACHENAME_FILES);
+        await files.addAll([
+            'favicon.png',
+            'index.html',
+            'script.js',
+            'style.css',
+        ]);
+        const items = await caches.open(CACHENAME_ITEMS);
+        await items.addAll([
+            '0?c=00ffff',
+            '1?c=ff00ff',
+            '2?c=ffff00',
+            '3?c=000000',
+        ]);
+    })());
+});
+
+addEventListener('activate', ev => ev.waitUntil(clients.claim()));
 
 addEventListener('fetch', ev => {
     /** @type {Request} */ const req = ev.request;
-    const key = 'conbimer_';//+ev.clientId;
 
     const url = new URL(req.url);
-    const purpose = url.pathname.slice(1, url.pathname.endsWith('/') ? -1 : undefined);
-    const nameas = url.search.slice(1+2);
+    const purpose = url.pathname.slice('/'.length, url.pathname.endsWith('/') ? -1 : undefined) || 'index.html';
+    const nameas = url.search.slice('?i='.length);
 
     switch (purpose) {
     case 'put':
         return ev.respondWith((async () => {
-            if (!offcanvas) offcanvas = new OffscreenCanvas(128, 128);
-            offcanvas
-                .getContext('2d')
-                .putImageData(
-                    new ImageData(
-                        new Uint8ClampedArray(
-                            await req.arrayBuffer()), 128),
-                    0, 0);
-
-            const cache = await caches.open(key);
-            await cache.put(nameas, new Response(
-                await offcanvas.convertToBlob(),
-                {headers: {'Content-Type': 'image/png'}}));
-
+            const items = await caches.open(CACHENAME_ITEMS);
+            await items.put(
+                nameas+'?c='+req.headers.get('X-Used-Colors'),
+                new Response(await req.blob()));
             return new Response(nameas);
         })());
 
     case 'get':
         return ev.respondWith((async () => {
-            const cache = await caches.open(key);
-            return await cache.match(nameas) || new Response(null, {
-                status: 404,
-                statusText: "No item named '"+nameas+"' yet",
-            });
+            const items = await caches.open(CACHENAME_ITEMS);
+            const res = await items.match(nameas, {ignoreSearch: true});
+            const url = new URL(res.url);
+            return res
+                ? new Response(res.body, {headers: {
+                    'Content-Type': 'image/png',
+                    'X-Used-Colors': url.search.slice('?c='.length),
+                }})
+                : new Response(null, {
+                    status: 404,
+                    statusText: "No item named '"+nameas+"' yet",
+                });
+        })());
+
+    case 'all':
+        return ev.respondWith((async () => {
+            const items = await caches.open(CACHENAME_ITEMS);
+            const r = [];
+            for (const key of await items.keys()) {
+                const res = await items.match(key);
+                const url = new URL(res.url);
+                r.push([
+                    url.pathname.slice('/'.length),
+                    url.search.slice('?c='.length),
+                ]);
+            }
+            return new Response(JSON.stringify(r));
+        })());
+
+    case 'clr':
+        return ev.respondWith((async () => {
+            const allkeys = await caches.keys();
+            await Promise.all(allkeys.map(key => caches.delete(key)));
+            return new Response('done');
         })());
     }
 
-    ev.respondWith(new Response(null, {
-        status: 400,
-        statusText: "Should be '/put' or '/get', not '/"+purpose+"'",
-    }));
+    ev.respondWith((async () => {
+        const files = await caches.open(CACHENAME_FILES);
+        return await files.match(purpose) || new Response(null, {
+            status: 404,
+            statusText: "No resource at '/"+purpose+"'",
+        });
+    })());
 });
