@@ -11,7 +11,11 @@
     </head>
     <body>
         <div id="wrapper">
-            <div id="top-bar"></div>
+            <div id="top-bar">
+                <span id="known_number"></span>
+                <button id="clear_items"></button>
+                <button id="update_files"></button>
+            </div>
             <div id="arena"></div>
             <ul id="known"></ul>
             <div id="button_grp">
@@ -21,6 +25,11 @@
                 <button id="draw_done">Done</button>
             </div>
             <ul id="colors"></ul>
+            <div id="colmixer" style="visibility: hidden;">
+                <input id="mix_ratio" type="range" min="1" max="99" />
+                <input id="mix_white" type="range" min="1" max="99" />
+                <div> </div>
+            </div>
             <canvas id="drawing"></canvas>
         </div>
     </body>

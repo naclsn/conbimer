@@ -2,10 +2,12 @@ window.onload = async function() {
     const RESIZE = 128;
 
     if (!navigator.serviceWorker) return document.body.innerHTML = '<h2>no :c</h2>'
-    const re = await navigator.serviceWorker.register('worker.js');
-    await re.update(); // XXX: ?wip :(
+    await navigator.serviceWorker.register('worker.js');
     await navigator.serviceWorker.ready;
 
+    /** @type {HTMLElement} */ const known_number = window.known_number;
+    /** @type {HTMLButtonElement} */ const clear_items = window.clear_items;
+    /** @type {HTMLButtonElement} */ const update_files = window.update_files;
     /** @type {HTMLElement} */ const wrapper = window.wrapper;
     /** @type {HTMLElement} */ const arena = window.arena;
     /** @type {HTMLElement} */ const button_grp = window.button_grp;
@@ -15,6 +17,7 @@ window.onload = async function() {
     /** @type {HTMLButtonElement} */ const draw_done = window.draw_done;
     /** @type {HTMLElement} */ const known = window.known;
     /** @type {HTMLElement} */ const colors = window.colors;
+    /** @type {HTMLElement} */ const colmixer = window.colmixer;
     /** @type {HTMLCanvasElement} */ const drawing = window.drawing;
 
     drawing.width = drawing.height = innerWidth;
@@ -35,6 +38,11 @@ window.onload = async function() {
         it.setAttribute('data-colors', data[1]);
         it.onpointerdown = knownItemPointerDown;
     }
+
+    known_number.textContent = known.childElementCount.toString();
+
+    clear_items.onclick = _ => fetch('clr');
+    update_files.onclick = _ => fetch('upd');
 
     boop.onclick = goDraw;
     draw_undo.onclick = drawUndo;
@@ -116,9 +124,18 @@ window.onload = async function() {
 
     const penpicker = document.createElement('div');
     penpicker.setAttribute('id', 'penpicker');
-    for (const size of [innerWidth/18, innerWidth/24, innerWidth/36]) {
+    if (1) {
+        const mixl = penpicker.appendChild(document.createElement('span'));
+        mixl.setAttribute('style', 'float: left;color: #000;');
+        mixl.onclick = mixCols;
+        const mixr = penpicker.appendChild(document.createElement('span'));
+        mixr.setAttribute('style', 'float: right;color: #000;');
+        mixr.onclick = mixCols;
+    }
+    for (const size of [innerWidth/40, innerWidth/12, innerWidth/7]) {
         const pen = penpicker.appendChild(document.createElement('div'));
-        pen.setAttribute('style', '--size: '+size+';');
+        pen.setAttribute('class', 'pensize');
+        pen.setAttribute('style', '--size: '+size+'px;');
         pen.onclick = pickPen;
     }
 
@@ -130,12 +147,32 @@ window.onload = async function() {
     function pickPen(/** @type {PointerEvent} */ ev) {
         /** @type {HTMLElement} */ const pen = ev.target;
         const col = penpicker.parentNode;
-        ctx.strokeStyle = col.getAttribute('style').slice('--color: '.length, -1);
-        ctx.lineWidth = pen.getAttribute('style').slice('--size: '.length, -1);
+        ctx.strokeStyle = col.getAttribute('style').slice('--color: '.length, -';'.length);
+        ctx.lineWidth = parseInt(pen.getAttribute('style').slice('--size: '.length, -'px;'.length));
         col.removeChild(penpicker);
     }
 
+    function mixCols(/** @type {PointerEvent} */ ev) {
+        /** @type {HTMLElement} */ const dir = ev.target;
+        colmixer.removeAttribute('style');
+    }
+
+        colmixer.setAttribute('style', 'visibility: hidden;');
+
+    document.body.onpointerdown = (/** @type {PointerEvent} */ ev) => {
+        if (ev.target.parentNode !== penpicker && penpicker.parentNode) {
+            penpicker.parentNode.removeChild(penpicker);
+            ev.stopPropagation();
+        }
+    };
+
+    const arenachld = [];
+
     function goDraw() {
+        arenachld.length = 0;
+        for (const one of arena.children) arenachld.push(one.src.slice(one.src.indexOf('=')+1));
+        arenachld.sort((a, b) => a-b);
+
         arena.innerHTML = ''; // XXX: *poof* :(
         draggingPointers.length = 0;
         itemColorMap.clear();
@@ -150,7 +187,7 @@ window.onload = async function() {
         drawn.length = last_drawn = 0;
         ctx.lineCap = ctx.lineJoin = 'round';
 
-        ctx.strokeStyle = colors.querySelector('.color').getAttribute('style').slice('--color: '.length, -1);
+        ctx.strokeStyle = colors.querySelector('.color').getAttribute('style').slice('--color: '.length, -';'.length);
         ctx.lineWidth = innerWidth/24;
     }
 
@@ -167,16 +204,17 @@ window.onload = async function() {
             const ctxx = resizer.getContext('2d');
             ctxx.clearRect(0, 0, RESIZE, RESIZE);
             ctxx.drawImage(drawing, 0, 0, RESIZE, RESIZE);
-            // XXX: need to name it maybe
             const nameas = known.childElementCount.toString();
             const colset = new Set(drawn.map(one => one[0].slice(1)));
             const collst = []; colset.forEach(v => collst.push(v));
             const usedcolors = collst.join('-');
+            const madefrom = arenachld.join('-');
             fetch('put?i='+nameas, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'image/png',
                     'X-Used-Colors': usedcolors,
+                    'X-Made-From': madefrom,
                 },
                 body: await resizer.convertToBlob(),
             }).then(_ => {

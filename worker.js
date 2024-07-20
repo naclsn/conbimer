@@ -5,19 +5,9 @@ addEventListener('install', ev => {
     ev.waitUntil((async () => {
         await skipWaiting();
         const files = await caches.open(CACHENAME_FILES);
-        await files.addAll([
-            'favicon.png',
-            'index.html',
-            'script.js',
-            'style.css',
-        ]);
+        await files.addAll(['favicon.png', 'index.html', 'script.js', 'style.css']);
         const items = await caches.open(CACHENAME_ITEMS);
-        await items.addAll([
-            '0?c=00ffff',
-            '1?c=ff00ff',
-            '2?c=ffff00',
-            '3?c=000000',
-        ]);
+        await items.addAll(['0', '1', '2', '3']);
     })());
 });
 
@@ -30,13 +20,27 @@ addEventListener('fetch', ev => {
     const purpose = url.pathname.slice('/'.length, url.pathname.endsWith('/') ? -1 : undefined) || 'index.html';
     const nameas = url.search.slice('?i='.length);
 
+    // POST /put?i=n
+    //     <- X-Used-Colors: a-b-c
+    //     <- X-Made-From: i-j-k
+    // GET  /get?i=n
+    //     -> Content-Type: image/png
+    //     -> X-Used-Colors: a-b-c
+    // GET  /has?u=i-j-k
+    //     -> 'n' or ''
+    // GET  /all
+    //     -> [[n, a-b-c], [.., ..], ..]
+
     switch (purpose) {
     case 'put':
         return ev.respondWith((async () => {
             const items = await caches.open(CACHENAME_ITEMS);
             await items.put(
-                nameas+'?c='+req.headers.get('X-Used-Colors'),
-                new Response(await req.blob()));
+                nameas,
+                new Response(await req.blob(), {statusText: req.headers.get('X-Used-Colors')}));
+            await items.put(
+                req.headers.get('X-Made-From'),
+                new Response(nameas))
             return new Response(nameas);
         })());
 
@@ -44,16 +48,21 @@ addEventListener('fetch', ev => {
         return ev.respondWith((async () => {
             const items = await caches.open(CACHENAME_ITEMS);
             const res = await items.match(nameas, {ignoreSearch: true});
-            const url = new URL(res.url);
             return res
-                ? new Response(res.body, {headers: {
+                ? new Response(await res.blob(), {headers: {
                     'Content-Type': 'image/png',
-                    'X-Used-Colors': url.search.slice('?c='.length),
+                    'X-Used-Colors': ['00ffff', 'ff00ff', 'ffff00', '000000'][nameas] || res.statusText,
                 }})
                 : new Response(null, {
                     status: 404,
                     statusText: "No item named '"+nameas+"' yet",
                 });
+        })());
+
+    case 'has':
+        return ev.respondWith((async () => {
+            const items = await caches.open(CACHENAME_ITEMS);
+            return await items.match(nameas) || new Response();
         })());
 
     case 'all':
@@ -62,10 +71,11 @@ addEventListener('fetch', ev => {
             const r = [];
             for (const key of await items.keys()) {
                 const res = await items.match(key);
-                const url = new URL(res.url);
+                if (!res.statusText) continue;
+                const nameas = key.url.slice(key.url.lastIndexOf('/')+1);
                 r.push([
-                    url.pathname.slice('/'.length),
-                    url.search.slice('?c='.length),
+                    nameas,
+                    ['00ffff', 'ff00ff', 'ffff00', '000000'][nameas] || res.statusText,
                 ]);
             }
             return new Response(JSON.stringify(r));
@@ -73,8 +83,19 @@ addEventListener('fetch', ev => {
 
     case 'clr':
         return ev.respondWith((async () => {
-            const allkeys = await caches.keys();
-            await Promise.all(allkeys.map(key => caches.delete(key)));
+            const items = await caches.open(CACHENAME_ITEMS);
+            for (const key of await items.keys()) {
+                const nameas = key.url.slice(key.url.lastIndexOf('/')+1);
+                if (3 < nameas) await items.delete(key);
+            }
+            return new Response('done');
+        })());
+
+    case 'upd':
+        return ev.respondWith((async () => {
+            await caches.delete(CACHENAME_FILES);
+            const files = await caches.open(CACHENAME_FILES);
+            await files.addAll(['favicon.png', 'index.html', 'script.js', 'style.css']);
             return new Response('done');
         })());
     }
