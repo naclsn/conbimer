@@ -8,6 +8,7 @@ window.onload = async function() {
     /** @type {HTMLElement} */ const known_number = window.known_number;
     /** @type {HTMLButtonElement} */ const clear_items = window.clear_items;
     /** @type {HTMLButtonElement} */ const update_files = window.update_files;
+    /** @type {HTMLButtonElement} */ const nuke_all = window.update_files;
     /** @type {HTMLElement} */ const wrapper = window.wrapper;
     /** @type {HTMLElement} */ const arena = window.arena;
     /** @type {HTMLElement} */ const button_grp = window.button_grp;
@@ -44,6 +45,7 @@ window.onload = async function() {
 
     clear_items.onclick =  _ => fetch('clr').then(() => alert("c fai")).catch(() => alert("peu pa"));
     update_files.onclick = _ => fetch('upd').then(() => alert("c fai")).catch(() => alert("peu pa"));
+    nuke_all.onclick =     _ => fetch('nuk').then(() => alert("c fai")).catch(() => alert("peu pa"));
 
     boop.onclick = goDraw;
     draw_undo.onclick = drawUndo;

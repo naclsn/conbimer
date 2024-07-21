@@ -3,11 +3,11 @@ const CACHENAME_ITEMS = 'conbimer-items';
 
 addEventListener('install', ev => {
     ev.waitUntil((async () => {
-        await skipWaiting();
         const files = await caches.open(CACHENAME_FILES);
         await files.addAll(['favicon.png', 'index.html', 'script.js', 'style.css']);
         const items = await caches.open(CACHENAME_ITEMS);
         await items.addAll(['0', '1', '2', '3']);
+        await skipWaiting();
     })());
 });
 
@@ -17,7 +17,7 @@ addEventListener('fetch', ev => {
     /** @type {Request} */ const req = ev.request;
 
     const url = new URL(req.url);
-    const purpose = url.pathname.slice('/'.length, url.pathname.endsWith('/') ? -1 : undefined) || 'index.html';
+    const purpose = url.pathname.slice(url.pathname.lastIndexOf('/')+1, url.pathname.endsWith('/') ? -1 : undefined) || 'index.html';
     const nameas = url.search.slice('?i='.length);
 
     // POST /put?i=n
@@ -71,8 +71,8 @@ addEventListener('fetch', ev => {
             const r = [];
             for (const key of await items.keys()) {
                 const res = await items.match(key);
-                if (!res.statusText) continue;
                 const nameas = key.url.slice(key.url.lastIndexOf('/')+1);
+                if (nameas.includes('-')) continue;
                 r.push([
                     nameas,
                     ['00ffff', 'ff00ff', 'ffff00', '000000'][nameas] || res.statusText,
@@ -96,6 +96,12 @@ addEventListener('fetch', ev => {
             await caches.delete(CACHENAME_FILES);
             const files = await caches.open(CACHENAME_FILES);
             await files.addAll(['favicon.png', 'index.html', 'script.js', 'style.css']);
+            return new Response('done');
+        })());
+
+    case 'nuk':
+        return ev.respondWith((async () => {
+            for (const key of await caches.keys()) await caches.delete(key);
             return new Response('done');
         })());
     }
