@@ -12,23 +12,23 @@
     <body>
         <div id="wrapper">
             <div id="top-bar">
-                <span id="known_number"></span>
-                <button id="clear_items"></button>
-                <button id="update_files"></button>
+                Nombre de trucs : <span id="known_number"></span><br />
+                <button id="clear_items">Effacer tout</button>
+                <button id="update_files">Mettre &agrave; jour</button>
             </div>
             <div id="arena"></div>
             <ul id="known"></ul>
             <div id="button_grp">
-                <button id="boop" disabled="oui">Boop</button>
-                <button id="draw_undo">Undo</button>
-                <button id="draw_redo">Redo</button>
-                <button id="draw_done">Done</button>
+                <button id="boop" disabled="oui">Boup</button>
+                <button id="draw_undo">Arri&egrave;re</button>
+                <button id="draw_redo">Avant</button>
+                <button id="draw_done">Finit</button>
             </div>
             <ul id="colors"></ul>
             <div id="colmixer" style="visibility: hidden;">
                 <input id="mix_ratio" type="range" min="1" max="99" />
-                <input id="mix_white" type="range" min="1" max="99" />
-                <div> </div>
+                <input id="mix_white" type="range" min="50" max="150" />
+                <button id="mix_done">Ok&eacute;&eacute;</button>
             </div>
             <canvas id="drawing"></canvas>
         </div>

@@ -12,16 +12,9 @@ body>div {
     touch-action: none;
 }
 
-:root {
-    /* --top-bar-height: 22vh; */
-    /* --arena-height: 55vh; */
-    /* --boop-height: 2rem; */
-    /* --item-size: 11vw; */
-    --boop-margin: 22%;
-}
-
 #top-bar {
     height: 15vh;
+    color: #000;
 }
 #arena {
     height: 40vh;
@@ -32,9 +25,9 @@ body>div {
     overflow-x: hidden;
 }
 #boop {
-    width: calc(100vw - 2 * var(--boop-margin));
-    margin-left: var(--boop-margin);
-    margin-right: var(--boop-margin);
+    width: calc(100vw - 44%);
+    margin-left: 22%;
+    margin-right: 22%;
 }
 #draw_undo,
 #draw_redo,
@@ -53,6 +46,9 @@ body>div {
 
 #known {
     height: 20vh;
+}
+#colors {
+    min-height: 20vh;
 }
 
 #drawing {
@@ -98,4 +94,18 @@ body>div {
     margin: .5rem 0 .5rem 0;
     background-color: var(--color);
     transform: translateX(calc(7vh - 50% - .33rem));
+}
+
+#colmixer {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 33vh;
+    height: 33vh;
+    background-color: var(--color);
+    text-align: center;
+}
+#mix_done {
+    margin-top: 33%;
 }
