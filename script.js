@@ -5,6 +5,7 @@ window.onload = async function() {
     await navigator.serviceWorker.register('worker.js');
     await navigator.serviceWorker.ready;
 
+    // typed re-declaration {{{
     /** @type {HTMLElement} */ const known_number = window.known_number;
     /** @type {HTMLButtonElement} */ const clear_items = window.clear_items;
     /** @type {HTMLButtonElement} */ const update_files = window.update_files;
@@ -23,25 +24,18 @@ window.onload = async function() {
     /** @type {HTMLInputElement} */ const mix_white = window.mix_white;
     /** @type {HTMLButtonElement} */ const mix_done = window.mix_done;
     /** @type {HTMLCanvasElement} */ const drawing = window.drawing;
+    // }}}
 
+    // initialization {{{
     drawing.width = drawing.height = innerWidth;
+    /** @type {CanvasRenderingContext2D} */
     const ctx = drawing.getContext('2d');
 
     scrollBy(0, -innerHeight);
     await goDone();
 
-    /** @type {[string, string][]} */
-    const load_known = await fetch('all').then(r => r.json());
-
-    for (const data of load_known) {
-        const it = known
-            .appendChild(document.createElement('li'))
-            .appendChild(document.createElement('img'));
-        it.setAttribute('class', 'item');
-        it.src = 'get?i='+data[0];
-        it.setAttribute('data-colors', data[1]);
-        it.onpointerdown = knownItemPointerDown;
-    }
+    for (const data of await fetch('all').then(r => r.json()))
+        addKnown(data[0], data[1]);
 
     clear_items.onclick =  _ => fetch('clr').then(() => alert("c fai")).catch(() => alert("peu pa"));
     update_files.onclick = _ => fetch('upd').then(() => alert("c fai")).catch(() => alert("peu pa"));
@@ -52,15 +46,30 @@ window.onload = async function() {
     draw_redo.onclick = drawRedo;
     draw_done.onclick = goDone;
 
+    function addKnown(nameas, usedcolors) {
+        const it = known
+            .appendChild(document.createElement('li'))
+            .appendChild(document.createElement('img'));
+        it.setAttribute('class', 'item');
+        it.src = 'get?i='+nameas;
+        it.setAttribute('data-colors', usedcolors);
+        it.onpointerdown = knownItemPointerDown;
+        known_number.textContent = known.childElementCount.toString();
+        return it;
+    }
+    // }}}
+
+    // dragging known -> arena {{{
     /** @type {(?HTMLElement)[]} */
     const draggingPointers = [];
 
     function knownItemPointerDown(/** @type {PointerEvent} */ ev) {
         ev.preventDefault();
-        draggingPointers[ev.pointerId] = arena.appendChild(ev.target.cloneNode(true));
-        const target = draggingPointers[ev.pointerId];
-        target.onpointerdown = arenaItemPointerDown;
-        moveAbsoluteItem(target, ev.x, ev.y);
+        /** @type {HTMLElement} */ const item = ev.target;
+        item.insertAdjacentElement('afterend', item.cloneNode(true)).onpointerdown = knownItemPointerDown;
+        item.onpointerdown = arenaItemPointerDown;
+        draggingPointers[ev.pointerId] = arena.appendChild(item);
+        moveAbsoluteItem(item, ev.x, ev.y);
     }
 
     function arenaItemPointerDown(/** @type {PointerEvent} */ ev) {
@@ -70,8 +79,6 @@ window.onload = async function() {
 
     /** @type {Map<HTMLElement, HTMLElement[]>} */
     const itemColorMap = new Map();
-    /** @type {Set<string>} */
-    const availColorSet = new Set();
 
     document.body.onpointerup = (/** @type {PointerEvent} */ ev) => {
         const target = draggingPointers[ev.pointerId];
@@ -83,8 +90,7 @@ window.onload = async function() {
             if (!itemColorMap.has(target)) {
                 const cols = target.getAttribute('data-colors').split('-');
                 const linked = [];
-                for (let k = 0; k < cols.length; ++k) if (!availColorSet.has(cols[k])) {
-                    availColorSet.add(cols[k]);
+                for (let k = 0; k < cols.length; ++k) {
                     const it = colors
                         .appendChild(document.createElement('li'))
                         .appendChild(document.createElement('div'));
@@ -100,10 +106,7 @@ window.onload = async function() {
 
         else {
             target.remove();
-            for (const it of itemColorMap.get(target) || []) {
-                availColorSet.delete(it.getAttribute('style').slice('--color: #'.length, -';'.length));
-                it.remove();
-            }
+            for (const it of itemColorMap.get(target) || []) it.parentElement.remove();
             itemColorMap.delete(target);
             if (arena.childElementCount < 2) boop.setAttribute('disabled', 'oui');
         }
@@ -122,22 +125,35 @@ window.onload = async function() {
         it.style.top = (y-it.offsetHeight/2) + 'px';
         it.style.left = (x-it.offsetWidth/2) + 'px';
     }
+    // }}}
 
-    /** the first index of each are the color (string) and the width
-     *  then the positions as a flat list of x,y
-     *  @type {[string, number...][]} */
-    const drawn = [];
-    let last_drawn = 0;
+    /**
+     * @typedef {Object} Stroke
+     * @property {string} style
+     * @property {number} width
+     * @property {number[]} points
+     */
 
-    const resizer = new OffscreenCanvas(RESIZE, RESIZE);
+    /**
+     * @typedef {Object} Colormix
+     * @property {HTMLElement} right the li>div elem which li gets removed
+     * @property {HTMLElement} left the li>div elem which --color gets changed from original to resulting
+     * @property {string} original
+     * @property {string} resulting
+     * @property {string} prevStrokeStyle
+     */
 
+    /** @type {(Stroke|Colormix)[]} */
+    const actionstack = [];
+    let actionat = 0;
+
+    // penpicker and colmixer {{{
     const penpicker = document.createElement('div');
     penpicker.setAttribute('id', 'penpicker');
     const pick_mixl = penpicker.appendChild(document.createElement('span'));
-    pick_mixl.textContent = '<+';
+    pick_mixl.textContent = '<+'; // TODO: better
     const pick_mixr = penpicker.appendChild(document.createElement('span'));
-    pick_mixr.setAttribute('style', 'float: right;color: #000;');
-    pick_mixr.textContent = '+>';
+    pick_mixr.textContent = '+>'; // TODO: better
     for (const size of [innerWidth/40, innerWidth/12, innerWidth/7]) {
         const pen = penpicker.appendChild(document.createElement('div'));
         pen.setAttribute('class', 'pensize');
@@ -149,14 +165,17 @@ window.onload = async function() {
         ev.stopPropagation();
         /** @type {HTMLElement} */ const col = ev.target;
         col.appendChild(penpicker);
-        if (col.parentElement.previousElementSibling) {
-            pick_mixl.onclick = mixCols;
-            pick_mixl.setAttribute('style', 'float: left;color: #000;');
-        } else pick_mixl.setAttribute('style', 'float: left;color: #fff;');
-        if (col.parentElement.nextElementSibling) {
-            pick_mixr.onclick = mixCols;
-            pick_mixr.setAttribute('style', 'float: right;color: #000;');
-        } else pick_mixr.setAttribute('style', 'float: right;color: #fff;');
+        enablemaybeidk(col.parentElement.previousElementSibling, pick_mixl);
+        enablemaybeidk(col.parentElement.nextElementSibling, pick_mixr);
+        function enablemaybeidk(/** @type {?HTMLElement} */ adjacent, /** @type {HTMLSpanElement} */ mixd) {
+            if (adjacent) {
+                mixd.onclick = mixCols;
+                mixd.setAttribute('class', 'active');
+            } else {
+                mixd.onclick = null;
+                mixd.removeAttribute('class');
+            }
+        }
     }
 
     function pickPen(/** @type {PointerEvent} */ ev) {
@@ -200,7 +219,7 @@ window.onload = async function() {
         }
     }
 
-    mix_ratio.onchange = mix_white.onchange = updateMix;
+    mix_ratio.oninput = mix_white.oninput = updateMix;
 
     function updateMix() {
         const t = mix_ratio.value/100, w = mix_white.value/100;
@@ -211,17 +230,27 @@ window.onload = async function() {
             255*(1-cmyk[0])*(1-cmyk[3]) |0,
             255*(1-cmyk[1])*(1-cmyk[3]) |0,
             255*(1-cmyk[2])*(1-cmyk[3]) |0,
-        ].map(c => c.toString(16).padStart(2, '0')).join('');
+        ].map(c => ('0'+c.toString(16)).slice(-2)).join('');
         colmixer.setAttribute('style', '--color: #'+color+';');
     };
 
     mix_done.onclick = (/** @type {PointerEvent} */ ev) => {
         ev.stopPropagation();
+        const orig = mixel1.getAttribute('style');
         const color = colmixer.getAttribute('style');
         mixel1.setAttribute('style', color);
         mixel2.parentElement.remove();
         colmixer.setAttribute('style', 'visibility: hidden;');
+        const prev = ctx.strokeStyle;
         ctx.strokeStyle = color.slice('--color: '.length, -';'.length);
+        actionstack[actionat++] = {
+            right: mixel1,
+            left: mixel2,
+            original: orig,
+            resulting: color,
+            prevStrokeStyle: prev,
+        };
+        draw_undo.removeAttribute('disabled');
     };
 
     document.body.onpointerdown = (/** @type {PointerEvent} */ ev) => {
@@ -233,26 +262,30 @@ window.onload = async function() {
             ev.stopPropagation();
         }
     };
+    // }}}
 
-    const arenachld = [];
+    /** @type {Stroke[]} */
+    const drawn = [];
+
+    // go draw/done {{{
+    const arenachld_madefrom = [];
 
     function goDraw() {
-        arenachld.length = 0;
-        for (const one of arena.children) arenachld.push(one.src.slice(one.src.indexOf('=')+1));
-        arenachld.sort((a, b) => a-b);
+        arenachld_madefrom.length = 0;
+        for (const one of arena.children) arenachld_madefrom.push(one.src.slice(one.src.indexOf('=')+1));
+        arenachld_madefrom.sort((a, b) => a-b);
 
         arena.innerHTML = '';
         draggingPointers.length = 0;
         itemColorMap.clear();
-        availColorSet.clear();
 
         known.setAttribute('class', 'locked');
         colors.removeAttribute('class');
-        wrapper.scrollBy({top: innerWidth, behavior: 'smooth'});
+        wrapper.scrollBy({top: innerWidth*2, behavior: 'smooth'});
         button_grp.scrollBy({left: innerWidth, behavior: 'smooth'});
 
         ctx.clearRect(0, 0, innerWidth, innerWidth);
-        drawn.length = last_drawn = 0;
+        drawn.length = actionstack.length = 0;
         ctx.lineCap = ctx.lineJoin = 'round';
 
         ctx.strokeStyle = colors.querySelector('.color').getAttribute('style').slice('--color: '.length, -';'.length);
@@ -260,6 +293,8 @@ window.onload = async function() {
     }
 
     setTimeout(() => known_number.textContent = known.childElementCount.toString(), 1000);
+    const resizer = new OffscreenCanvas(RESIZE, RESIZE);
+
     async function goDone(/** @type {boolean} */ done) {
         colors.innerHTML = '';
         for (const button of button_grp.children) button.setAttribute('disabled', 'oui');
@@ -274,10 +309,10 @@ window.onload = async function() {
             ctxx.clearRect(0, 0, RESIZE, RESIZE);
             ctxx.drawImage(drawing, 0, 0, RESIZE, RESIZE);
             const nameas = known.childElementCount.toString();
-            const colset = new Set(drawn.map(one => one[0].slice(1)));
+            const colset = new Set(drawn.map(one => one.style.slice('#'.length)));
             const collst = []; colset.forEach(v => collst.push(v));
             const usedcolors = collst.join('-');
-            const madefrom = arenachld.join('-');
+            const madefrom = arenachld_madefrom.join('-');
             await fetch('put?i='+nameas, {
                 method: 'POST',
                 headers: {
@@ -287,74 +322,94 @@ window.onload = async function() {
                 },
                 body: await resizer.convertToBlob(),
             });
-            const it = known
-                .appendChild(document.createElement('li'))
-                .appendChild(document.createElement('img'));
-            it.setAttribute('class', 'item');
-            it.src = 'get?i='+nameas;
-            it.setAttribute('data-colors', usedcolors);
-            it.onpointerdown = knownItemPointerDown;
-            known_number.textContent = known.childElementCount.toString();
-
+            addKnown(nameas, usedcolors);
         }
     }
+    // }}}
 
-    function drawUndo() {
-        if (!--last_drawn) {
-            draw_undo.setAttribute('disabled', 'oui');
-            draw_done.setAttribute('disabled', 'oui');
-        }
-        draw_redo.removeAttribute('disabled');
-
-        ctx.clearRect(0, 0, innerWidth, innerWidth);
-
-        for (const each of drawn.slice(0, last_drawn)) {
-            ctx.strokeStyle = each[0];
-            ctx.lineWidth = each[1];
-            ctx.beginPath();
-            ctx.moveTo(each[2], each[3]);
-            for (let k = 4; k < each.length; k+= 2) ctx.lineTo(each[k], each[k+1]);
-            ctx.stroke();
-        }
-    }
-
-    function drawRedo() {
-        if (drawn.length === ++last_drawn) draw_redo.setAttribute('disabled', 'oui');
-        draw_undo.removeAttribute('disabled');
-        draw_done.removeAttribute('disabled');
-
-        const last = drawn[last_drawn-1];
-        ctx.strokeStyle = last[0];
-        ctx.lineWidth = last[1];
-        ctx.beginPath();
-        ctx.moveTo(last[2], last[3]);
-        for (let k = 4; k < last.length; k+= 2) ctx.lineTo(last[k], last[k+1]);
-        ctx.stroke();
-    }
-
+    // drawing {{{
     drawing.onpointerdown = (/** @type {PointerEvent} */ ev) => {
         ctx.beginPath();
         ctx.moveTo(ev.offsetX, ev.offsetY);
         draw_redo.setAttribute('disabled', 'oui');
-        drawn[last_drawn] = [ctx.strokeStyle, ctx.lineWidth, ev.offsetX, ev.offsetY];
+        drawn.push({
+            style: ctx.strokeStyle,
+            width: ctx.lineWidth,
+            points: [ev.offsetX, ev.offsetY],
+        });
     };
 
     drawing.onpointermove = (/** @type {PointerEvent} */ ev) => {
         if (ev.buttons) {
             ctx.lineTo(ev.offsetX, ev.offsetY);
-            drawn[drawn.length-1].push(ev.offsetX, ev.offsetY);
+            drawn[drawn.length-1].points.push(ev.offsetX, ev.offsetY);
             ctx.stroke();
             ctx.beginPath();
             ctx.moveTo(ev.offsetX, ev.offsetY);
-            drawn[drawn.length-1].push(ev.offsetX, ev.offsetY);
+            drawn[drawn.length-1].points.push(ev.offsetX, ev.offsetY);
         }
     };
 
     drawing.onpointerup = (/** @type {PointerEvent} */ ev) => {
         drawing.onpointermove(ev);
         ctx.stroke();
-        ++last_drawn;
+        actionstack[actionat++] = drawn[drawn.length-1];
         draw_undo.removeAttribute('disabled');
         draw_done.removeAttribute('disabled');
     };
+    // }}}
+
+    // undo/redo {{{
+    function drawUndo() {
+        const actionit = actionstack[--actionat];
+        if (!actionat) {
+            draw_undo.setAttribute('disabled', 'oui');
+            draw_done.setAttribute('disabled', 'oui');
+        }
+        draw_redo.removeAttribute('disabled');
+
+        if (actionit.points) {
+            drawn.pop();
+            ctx.clearRect(0, 0, innerWidth, innerWidth);
+            for (const stroke of drawn) {
+                ctx.strokeStyle = stroke.style;
+                ctx.lineWidth = stroke.width;
+                ctx.beginPath();
+                ctx.moveTo(stroke.points[0], stroke.points[1]);
+                for (let k = 2; k < stroke.points.length; k+= 2)
+                    ctx.lineTo(stroke.points[k], stroke.points[k+1]);
+                ctx.stroke();
+            }
+        } else {
+            /** @type {Colormix} */ const mix = actionit;
+            mix.right.setAttribute('style', mix.original);
+            mix.right.parentElement.insertAdjacentElement('beforebegin', mix.left.parentElement);
+            ctx.strokeStyle = mix.prevStrokeStyle;
+        }
+    }
+
+    function drawRedo() {
+        const actionit = actionstack[actionat++];
+        if (actionstack.length === actionat)
+            draw_redo.setAttribute('disabled', 'oui');
+        draw_undo.removeAttribute('disabled');
+        draw_done.removeAttribute('disabled');
+
+        if (actionit.points) {
+            /** @type {Stroke} */ const stroke = actionit;
+            ctx.strokeStyle = stroke.style;
+            ctx.lineWidth = stroke.width;
+            ctx.beginPath();
+            ctx.moveTo(stroke.points[0], stroke.points[1]);
+            for (let k = 2; k < stroke.points.length; k+= 2)
+                ctx.lineTo(stroke.points[k], stroke.points[k+1]);
+            ctx.stroke();
+        } else {
+            /** @type {Colormix} */ const mix = actionit;
+            mix.right.setAttribute('style', mix.resulting);
+            mix.left.parentElement.remove();
+            ctx.strokeStyle = mix.resulting.slice('--color: '.length, -';'.length);
+        }
+    }
+    // }}}
 };
