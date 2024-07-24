@@ -108,7 +108,13 @@ addEventListener('fetch', ev => {
 
     ev.respondWith((async () => {
         const files = await caches.open(CACHENAME_FILES);
-        return await files.match(purpose) || new Response(null, {
+        const r1 = await files.match(purpose);
+        if (r1) return r1;
+        try {
+            const r2 = await fetch(req);
+            if (r2) return files.put(r2), r2;
+        } catch (e) { }
+        return new Response(null, {
             status: 404,
             statusText: "No resource at '/"+purpose+"'",
         });
